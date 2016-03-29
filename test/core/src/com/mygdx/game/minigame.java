@@ -14,4 +14,5 @@ public interface minigame {
     public void setDifficulty(int f);
     public void fireEvent();
     public void dispose();
+    public int getPoints();
 }

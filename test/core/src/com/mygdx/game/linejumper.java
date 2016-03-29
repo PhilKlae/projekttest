@@ -1,30 +1,37 @@
 package com.mygdx.game;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.utils.Pool;
 
-import java.util.ArrayList;
+    import java.util.ArrayList;
 
-/**
- * Created by philo on 15.03.2016.
- */
-public class linejumper implements minigame, Disposable {
+    /**
+     * Created by philo on 15.03.2016.
+     */
+    public class linejumper implements minigame, Disposable {
 
+    int[] oldpos=new int[5];
+     float deltatime=0;
     //render kram
     Pixmap pixmap;
     Texture texture;
     Sprite sprite;
+
+        int punkte=0;
 
     boolean paused=false;
 
 
     int framecounter=0;
     int lastblock=0;
-    int blockdist=100;
+    int blockdist=(int)(Math.random()*500+50);
 
     //länge und breite des spielfeldes
     int length=0;
@@ -35,7 +42,16 @@ public class linejumper implements minigame, Disposable {
     int difficulty=0;
 
     //liste mit blöcken
-    ArrayList<Block> blocks=new ArrayList<Block>();
+
+    private final Array<Block> activeBlocks = new Array<Block>();
+
+    // bullet pool.
+    private final Pool<Block> blockPool = new Pool<Block>() {
+
+        protected Block newObject() {
+            return new Block();
+        }
+    };
 
     //player conditions
     int playerpos=0;
@@ -45,9 +61,20 @@ public class linejumper implements minigame, Disposable {
 
     Color playercolor;
 
+
+    public linejumper(){
+
+    }
+
     public linejumper(int l, int w, int colorint){
+        //
 
+        punkte=0;
+        for(int i=0;i<oldpos.length;i++){
 
+            oldpos[i]=0;
+
+        }
 
         width=w;
         length=l;
@@ -73,62 +100,31 @@ public class linejumper implements minigame, Disposable {
     }
 
     public void refresh(){
+        punkte=0;
+        deltatime = Gdx.graphics.getDeltaTime();
         if(!paused){
         framecounter++;
 
         //updateplayerdata
         if(playerdirection==1||playerdirection==-1){
-            playerpos-=playerdirection + playerspeed*playerdirection;
+            playerpos-=playerdirection + playerspeed*deltatime*60*playerdirection;
         }
 
         if(playerpos<=0){
             playerdirection=-2;
+            playerpos=0;
         }
 
         if(playerpos>=width){
             playerdirection=2;
+            playerpos=width;
         }
 
-
-        //block pos prüfen
-        for(int i=0;i<blocks.size();i++) {
-
-            //kollision testen
-            if (blocks.get(i).pos == playercol) {
-
-                //spieler ist auf der rechten seite und wird getrofeen
-                if (blocks.get(i).right && playerpos > width - blocks.get(i).blocksize) {
-                    //TODO punktabzug
-
-                    blocks.get(i).hit = true;
-
-                }
-
-
-                //spieler ist auf der linken seite und wird getroffen
-                if (!blocks.get(i).right && playerpos < blocks.get(i).blocksize) {
-                    //TODO punktabzug
-
-                    blocks.get(i).hit = true;
-                }
-
+            for(int i=0;i<activeBlocks.size;i++){
+                activeBlocks.get(i).update(deltatime,playerpos);
             }
 
-            //blöcke werden verschoben und aussortiert wenn sie die maße des spielfelds überschreiten
-
-            if (blocks.get(i).pos > length) {
-
-
-                   lastblock=framecounter - lastblock;
-                framecounter=0;
-
-
-                blocks.remove(i);
-            } else {
-                blocks.get(i).pos = blocks.get(i).pos + blocks.get(i).speed;
-            }
-        }
-        }
+}
 
         //blockdistanz erzeugen
 
@@ -137,20 +133,32 @@ public class linejumper implements minigame, Disposable {
             lastblock=framecounter;
 
             spawnBlock();
+
              blockdist=(int)(Math.random()*500+50);
         }
+        Block item;
+        int len = activeBlocks.size;
+        for (int i = len; --i >= 0;) {
+            item = activeBlocks.get(i);
+            if (item.alive == false) {
+                punkte +=item.getpunkte();
+
+                activeBlocks.removeIndex(i);
+                blockPool.free(item);
+
+            }
+        }
+
 
     }
 
 
     public void spawnBlock(){
-        //easy
+            Block item = blockPool.obtain();
+            item.init(1,length,width,playercol);
+            activeBlocks.add(item);
 
-        //hier dificulty einfließen lassen TODO
-       blocks.add(new Block(Math.random() < 0.5,0.3,0.01,width,length));
-        //harder aber verbuggt
-      // blocks.add(new Block(Math.random() < 0.5,0.5,Math.random()*2/100,width,length));
-    }
+        }
 
 
 
@@ -161,6 +169,7 @@ public class linejumper implements minigame, Disposable {
         if(playerdirection==-2){
             playerdirection=-1;
         }
+
     }
 
     public Sprite paintpic(){
@@ -178,9 +187,8 @@ public class linejumper implements minigame, Disposable {
         pixmap = new Pixmap(length ,width, Pixmap.Format.RGBA8888);
 
 
-
-        pixmap.setColor(Color.WHITE);
-        pixmap.fill();
+      pixmap.setColor(300,300,300,100);
+      pixmap.fill();
 
         //seitenlinien zeichnen
 
@@ -188,21 +196,22 @@ public class linejumper implements minigame, Disposable {
         pixmap.drawLine(0, 0, 0, pixmap.getHeight()-1);
         pixmap.drawLine(pixmap.getWidth()-1, 0, pixmap.getWidth()-1, pixmap.getHeight()-1);
 
-        for(int i=0;i<blocks.size();i++){
-            if(blocks.get(i).hit){
+        for(int i=0;i<activeBlocks.size;i++){
+          //  System.out.println(activeBlocks.get(i).pos);
+            if(activeBlocks.get(i).hit){
                 pixmap.setColor(Color.RED);
             }
-            if(blocks.get(i).right){
-                pixmap.fillRectangle(256-blocks.get(i).blocksize,blocks.get(i).pos-10,blocks.get(i).blocksize,10);
+            if(activeBlocks.get(i).right){
+                pixmap.fillRectangle(256-activeBlocks.get(i).blocksize,activeBlocks.get(i).pos-10,activeBlocks.get(i).blocksize,10);
             }else{
 
-                pixmap.fillRectangle(0,blocks.get(i).pos-10,blocks.get(i).blocksize,10);
+                pixmap.fillRectangle(0,activeBlocks.get(i).pos-10,activeBlocks.get(i).blocksize,10);
 
             }
             pixmap.setColor(Color.BLACK);
         }
 
-        //Draw a circle about the middle
+
         pixmap.setColor(playercolor);
        // pixmap.drawCircle(playerpos,playercol,3);
         if(playerdirection==2){
@@ -214,6 +223,7 @@ public class linejumper implements minigame, Disposable {
             pixmap.setColor(Color.BLACK);
             pixmap.drawRectangle(playerpos,playercol,10,30);
         }
+
 
         texture = new Texture(pixmap);
 
@@ -230,12 +240,25 @@ public class linejumper implements minigame, Disposable {
 
     @Override
     public void dispose() {
-        texture.dispose();
-        pixmap.dispose();
+
+        try {
+
+            texture.dispose();
+            pixmap.dispose();
+            sprite.getTexture().dispose();
+
+        } catch (Exception e) {
+
+        }
     }
 
+        @Override
+        public int getPoints() {
+            return punkte;
+        }
 
-    public void pause(){
+
+        public void pause(){
            paused=true;
     }
 
@@ -246,6 +269,8 @@ public class linejumper implements minigame, Disposable {
     public void setDifficulty( int f){
          difficulty=f;
     }
+
+
 
 }
 
